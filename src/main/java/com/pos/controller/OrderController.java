@@ -2,7 +2,7 @@ package com.pos.controller;
 
 import com.pos.model.Order;
 import com.pos.repository.OrderRepository;
-import com.razorpay.Order as RazorpayOrder;
+import com.razorpay.Order.RazorpayOrder;
 import com.razorpay.RazorpayClient;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
