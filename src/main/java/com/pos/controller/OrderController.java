@@ -2,7 +2,6 @@ package com.pos.controller;
 
 import com.pos.model.Order;
 import com.pos.repository.OrderRepository;
-import com.razorpay.Order.RazorpayOrder;
 import com.razorpay.RazorpayClient;
 import org.json.JSONObject;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,7 +37,7 @@ public class OrderController {
             options.put("currency", "INR");
             options.put("receipt", "txn_" + System.currentTimeMillis());
 
-            RazorpayOrder razorpayOrder = razorpayClient.orders.create(options);
+            com.razorpay.Order razorpayOrder = razorpayClient.orders.create(options);
 
             order.setOrderTime(LocalDateTime.now());
             order.setPaymentId(razorpayOrder.get("id"));
