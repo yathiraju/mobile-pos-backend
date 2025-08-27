@@ -1,63 +1,61 @@
 package com.pos.controller;
 
-import com.pos.model.Order;
+import com.pos.model.Orders;
+import com.pos.model.OrderItem;
+import com.pos.model.Product;
 import com.pos.repository.OrderRepository;
-import com.razorpay.RazorpayClient;
-import org.json.JSONObject;
+import com.pos.repository.ProductRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.LocalDateTime;
-import java.util.List;
+import java.util.Optional;
 
 @RestController
-@RequestMapping("/orders")
+@RequestMapping("/api/orders")
 public class OrderController {
+    @Autowired
+    private OrderRepository orderRepo;
 
     @Autowired
-    private OrderRepository orderRepository;
+    private ProductRepository productRepo;
 
-    private RazorpayClient razorpayClient;
-
-    public OrderController() throws Exception {
-        this.razorpayClient = new RazorpayClient("YOUR_RAZORPAY_KEY_ID", "YOUR_RAZORPAY_SECRET");
-    }
-
-    @GetMapping
-    public List<Order> getAllOrders() {
-        return orderRepository.findAll();
-    }
-
-    @PostMapping("/create")
-    public ResponseEntity<?> createOrder(@RequestBody Order order) {
-        try {
-            JSONObject options = new JSONObject();
-            options.put("amount", (int)(order.getTotalAmount() * 100)); // in paise
-            options.put("currency", "INR");
-            options.put("receipt", "txn_" + System.currentTimeMillis());
-
-            com.razorpay.Order razorpayOrder = razorpayClient.orders.create(options);
-
-            order.setOrderTime(LocalDateTime.now());
-            order.setPaymentId(razorpayOrder.get("id"));
-            order.setPaymentStatus("created");
-            orderRepository.save(order);
-
-            return ResponseEntity.ok(razorpayOrder.toString());
-        } catch (Exception e) {
-            return ResponseEntity.status(500).body("Payment creation failed: " + e.getMessage());
+    @PostMapping
+    public ResponseEntity<Orders> createOrder(@RequestBody Orders orders) {
+        // calculate totals and set associations
+        double total = 0;
+        for (OrderItem it : orders.getItems()) {
+            if (it.getProduct() != null && it.getProduct().getId() != null) {
+                Optional<Product> p = productRepo.findById(it.getProduct().getId());
+                if (p.isPresent()) {
+                    Product prod = p.get();
+                    it.setPrice(prod.getPrice());
+                    // decrease stock (simple approach)
+                    if (prod.getStockQuantity() != null) {
+                        prod.setStockQuantity(prod.getStockQuantity() - it.getQuantity());
+                        productRepo.save(prod);
+                    }
+                }
+            }
+            total += it.getPrice() * it.getQuantity();
+            it.setOrder(orders);
         }
+        orders.setTotalAmount(total);
+        orders.setStatus("PENDING");
+        Orders saved = orderRepo.save(orders);
+        return ResponseEntity.ok(saved);
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Order> getOrderById(@PathVariable Long id) {
-        return ResponseEntity.of(orderRepository.findById(id));
+    public ResponseEntity<Orders> get(@PathVariable Long id) {
+        return orderRepo.findById(id).map(ResponseEntity::ok).orElse(ResponseEntity.notFound().build());
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<String> deleteOrder(@PathVariable Long id) {
-        orderRepository.deleteById(id);
-        return ResponseEntity.ok("Order deleted");
+    @PostMapping("/{id}/pay")
+    public ResponseEntity<Orders> markPaid(@PathVariable Long id) {
+        return orderRepo.findById(id).map(o -> {
+            o.setStatus("PAID");
+            orderRepo.save(o);
+            return ResponseEntity.ok(o);
+        }).orElse(ResponseEntity.notFound().build());
     }
 }
